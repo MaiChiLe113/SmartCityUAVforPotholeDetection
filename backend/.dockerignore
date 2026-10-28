@@ -1,0 +1,6 @@
+.venv
+data
+runs
+weights
+.env
+__pycache__

@@ -1,0 +1,55 @@
+[project]
+name = "pothole-uav-backend"
+version = "0.1.0"
+description = "Smart City UAV for Pothole Detection: ML pipeline, API, UAV simulation and edge runner"
+requires-python = ">=3.11"
+# Core: enough to run the API and the tests.
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "pydantic>=2.7",
+    "python-multipart>=0.0.9",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Heavy ML stack (PyTorch + Ultralytics YOLO, Hugging Face, MLOps tools).
+ml = [
+    "torch>=2.3",
+    "ultralytics>=8.3",
+    "huggingface_hub>=0.24",
+    "datasets>=2.20",
+    "mlflow>=2.15",
+    "evidently>=0.4",
+    "imagehash>=4.3",
+    "opencv-python>=4.10",
+    "pillow>=10.0",
+]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["config"]
+
+[tool.setuptools.packages.find]
+include = ["ml*", "app*", "sim*", "edge*", "run*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"]  # FastAPI uses Depends()/File() in defaults
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
