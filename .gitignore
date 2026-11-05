@@ -35,3 +35,8 @@ next-env.d.ts
 .vscode/
 
 .claude
+# Studio 7 pipeline outputs (model.py)
+/model_results.png
+/training_history.png
+/metrics.txt
+/linear_regression_model.h5
