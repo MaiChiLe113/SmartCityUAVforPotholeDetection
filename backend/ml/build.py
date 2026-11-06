@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from config import (
     AUGMENT,
     DATA,
+    DEMO,
     EXPORT,
     INFER,
     MLOPS,
@@ -21,6 +22,7 @@ from config import (
     UAV,
     AugmentConfig,
     DataConfig,
+    DemoConfig,
     ExportConfig,
     InferConfig,
     MlopsConfig,
@@ -36,6 +38,8 @@ if TYPE_CHECKING:
     from ml.drift import DriftMonitor
     from ml.export import Exporter
     from ml.registry import ModelRegistry
+    from sim.camera import VirtualCamera
+    from sim.demo import DemoRun
 
 
 # --- Data (SCRUM-18, Chi) ---------------------------------------------------
@@ -101,6 +105,20 @@ def build_flight_planner(cfg: UavConfig = UAV) -> FlightPlanner:
     from app.services.flight_planner import FlightPlanner
 
     return FlightPlanner(cfg)
+
+
+def build_camera(cfg: UavConfig = UAV) -> VirtualCamera:
+    """Build a recorded-image camera from the configured development folder."""
+    from sim.camera import VirtualCamera
+
+    return VirtualCamera(cfg)
+
+
+def run_local_demo(cfg: DemoConfig = DEMO, uav: UavConfig = UAV, *, image_dir: Path | None = None) -> DemoRun:
+    """Build and run the isolated local fixture demo."""
+    from sim.demo import run_demo
+
+    return run_demo(cfg, uav, image_dir=image_dir)
 
 
 # --- MLOps (SCRUM-28, SCRUM-36, Chi) ----------------------------------------

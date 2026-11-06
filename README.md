@@ -6,8 +6,10 @@ Residents pin a pothole on a map and send a photo. The server runs a YOLO pre-ch
 reviews the report and approves a flight plan, then a simulated UAV flies the route and an edge device
 (Jetson / Raspberry Pi) confirms the damage. The dashboard shows the UAV and the result.
 
-> **Status:** skeleton. Most functions raise `NotImplementedError("TODO(SCRUM-xx, owner)")` and most
-> API endpoints answer `501 Not implemented yet: SCRUM-xx`. Search for your Jira key to find your work:
+> **Status:** the isolated local UAV demo works with synthetic or development image fixtures and mock results.
+> The live API, dashboard integration, model and edge workflow remain largely a skeleton: most functions raise
+> `NotImplementedError("TODO(SCRUM-xx, owner)")` and most API endpoints answer `501 Not implemented yet: SCRUM-xx`.
+> Search for your Jira key to find your work:
 > `grep -rn "SCRUM-24" backend frontend --exclude-dir=node_modules --exclude-dir=.venv`
 
 ## Repository layout
@@ -96,13 +98,55 @@ python -m run.serve --reload
 - Health check: http://localhost:8000/health
 - Interactive docs: http://localhost:8000/docs
 
-## 6. UAV simulation
+## 6. Local UAV simulation demo
+
+This offline, mission-level demo runs on a PC with Python 3.11+ and core/dev dependencies. It does not
+need a backend server, network, model weights, GPU, Raspberry Pi, or ML extras. From `backend/`:
 
 ```bash
-python -m run.simulate_mission --mission-id 1
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+python -m run.demo_mission --approve-demo
 ```
 
-Needs the API running and an approved flight plan (mission) for that id.
+In Windows PowerShell, use `.\.venv\Scripts\Activate.ps1` after creating the environment (or use
+`.\.venv\Scripts\python.exe -m pip install -e ".[dev]"` and
+`.\.venv\Scripts\python.exe -m run.demo_mission --approve-demo` without activation).
+Pillow is a lightweight core dependency used to generate and validate image files.
+
+The flag acknowledges **only the local demo**. It does not approve or dispatch a live mission. Each run
+prints its newly created output folder under `backend/runs/simulator_demo/`; set `--output-dir PATH` to
+choose a different parent. It never overwrites a prior run. The folder contains `plan.json`,
+`manifest.json`, `telemetry.json`, `results.json`, `summary.json`, and generated images in
+`synthetic_fixtures/`. The manifest identifies input order and preset outcomes; results include successful
+frames with no detections. The summary distinguishes logical mission time from actual wall time.
+
+By default, the demo generates three valid **synthetic test drawings**, not aerial photos. It flies a short
+route at mission level, pauses at each survey point while mock processing runs, emits telemetry, and returns
+home. `mock-v1` is a fixed fixture, not a trained detector: its preset class, confidence and box are not
+measurements or evidence of model accuracy. Recorded images are associated with simulated poses; they were
+not captured at those poses. There is no 3D rendering, physical flight dynamics or defect geolocation.
+
+```bash
+python -m run.demo_mission --approve-demo --scenario positive   # one preset D40 detection; 3 successes
+python -m run.demo_mission --approve-demo --scenario all-empty  # 3 successes, no detections
+python -m run.demo_mission --approve-demo --scenario error      # second frame fails; nonzero exit
+python -m run.demo_mission --approve-demo --scenario timeout    # second frame times out; nonzero exit
+python -m run.demo_mission --approve-demo --images PATH_TO_DEVELOPMENT_IMAGES
+```
+
+For `--images`, provide a separate folder with exactly three readable PNG/JPEG development images, each at
+least 90×90 pixels for the fixed demonstration box. Files are read in filename order and never modified.
+Do not use the frozen test set. The input and output folders must not contain one another. `--delay SECONDS`
+and `--timeout SECONDS` control simulated processing delay and deadline. The ordinary delay must be less than
+the timeout for every scenario; the timeout scenario separately delays the second frame past the deadline.
+The default virtual clock makes a run fast and reproducible; telemetry remains visible while a frame is pending. The engine's processor
+`start` and `poll` methods must return promptly: a deadline cannot interrupt blocking code.
+
+`python -m run.simulate_mission --mission-id 1` remains a live-API integration TODO; it cannot fetch or fly
+an approved plan yet. Real approval/dispatch, dashboard telemetry, Raspberry Pi communication, and trained
+model integration are future work.
 
 ## 7. Frontend
 

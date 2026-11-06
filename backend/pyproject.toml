@@ -12,6 +12,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
+    "pillow>=10.0",  # validate simulator images and generate local demo fixtures
 ]
 
 [project.optional-dependencies]
@@ -25,7 +26,6 @@ ml = [
     "evidently>=0.4",
     "imagehash>=4.3",
     "opencv-python>=4.10",
-    "pillow>=10.0",
 ]
 dev = [
     "pytest>=8.0",

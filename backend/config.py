@@ -195,6 +195,22 @@ class UavConfig:
     telemetry_interval_s: float = 1.0
     drone_ids: tuple[str, ...] = ("sim-uav-1",)
     merge_radius_m: float = 2.0  # detections closer than this are one defect
+    max_target_distance_m: float = 10_000.0  # local planning limit (at most 10 km)
+    recorded_images_dir: Path = ROOT / "data" / "simulator" / "development"
+    processing_timeout_s: float = 30.0
+
+
+# ---------------------------------------------------------------------------
+# Isolated local simulator demonstration
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class DemoConfig:
+    output_dir: Path = ROOT / "runs" / "simulator_demo"
+    scenario: str = "positive"
+    processing_delay_s: float = 1.5
+    image_size: tuple[int, int] = (128, 128)
+    target_offset_deg: float = 0.0001
+    fixture_names: tuple[str, ...] = ("frame-01.png", "frame-02.png", "frame-03.png")
 
 
 # ---------------------------------------------------------------------------
@@ -220,4 +236,5 @@ PROMOTION = PromotionConfig()
 MLOPS = MlopsConfig()
 MONITOR = MonitorConfig()
 UAV = UavConfig()
+DEMO = DemoConfig()
 API = ApiConfig()
