@@ -2,14 +2,14 @@ name: Train ML Model
 
 on:
   push:
-    branches: [ main ]        # runs every time you push to main
+    branches: [ main ]        # runs every time push to main
   pull_request:
     branches: [ main ]        # runs on pull requests to main
   workflow_dispatch:          # allows manual trigger from GitHub UI
 
 jobs:
   train:
-    runs-on: ubuntu-latest    # GitHub-hosted Linux runner (free)
+    runs-on: ubuntu-latest    # GitHub-hosted Linux
 
     steps:
       # 1. Check out the repository code
@@ -35,12 +35,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # 5. Train the model -- runs model.py
+      # 5. Train the model (runs model.py)
       - name: Train model
         run: python model.py
 
       # 6. Upload the saved plot and metrics as artefacts
-      #    so you can download them from the GitHub Actions UI
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
