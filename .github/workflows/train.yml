@@ -40,7 +40,6 @@ jobs:
         run: python model.py
 
       # 6. Upload the saved plot and metrics as artefacts
-      #    so you can download them from the GitHub Actions UI
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
