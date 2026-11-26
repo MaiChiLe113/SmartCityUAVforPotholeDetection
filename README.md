@@ -24,6 +24,7 @@ docs/
   training/        training records for the prototype and YOLO26n v1
 .github/workflows/
   ci.yml           ruff and pytest on every pull request
+  retrain.yml      retraining and monitoring on new data, weekly, or on demand
   train.yml        Studio 7 demo pipeline (model.py)
 model.py, requirements.txt   Studio 7 TensorFlow demo, kept for Group Task 2
 ```
@@ -71,6 +72,21 @@ Rules for this pipeline:
   test lock is verified.
 - Start training from COCO-pretrained weights or from the current champion, never from prototype runs.
 - Never commit datasets, weights or run output.
+
+## Retraining and monitoring
+
+`.github/workflows/retrain.yml` retrains the model when a new labelled batch is pushed
+(`backend/data/new/batch_NNN`, versioned with DVC), every week, or on demand:
+
+1. **check** (hosted): finds batches the champion was not trained on, writes a drift and data-quality report,
+   and decides whether to retrain.
+2. **retrain** on a self-hosted `gpu` runner (`dvc repro`: ingest with leakage checks, warm-start training,
+   champion vs challenger on validation, test scored for the record), or a short hosted CPU demo.
+3. **promote**: after a reviewer approves the `model-approval` environment, the challenger becomes the
+   champion and the change arrives as a pull request.
+
+- Runbook, setup and runner hosting on any PC: [docs/mlops/retraining.md](docs/mlops/retraining.md)
+- Demo recording guide: [docs/mlops/video-recording.md](docs/mlops/video-recording.md)
 
 ## Studio 7 demo pipeline
 
