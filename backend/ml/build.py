@@ -14,10 +14,12 @@ from config import (
     DATA,
     MONITOR,
     PATHS,
+    RETRAIN,
     TRAIN,
     AugmentConfig,
     DataConfig,
     MonitorConfig,
+    RetrainConfig,
     TrainConfig,
 )
 from ml import data
@@ -59,12 +61,36 @@ def build_model(name: str = TRAIN.baseline, cfg: TrainConfig = TRAIN) -> Any:
     return YOLO(name)
 
 
+def assert_allowed_init(weights: Path, cfg: TrainConfig = TRAIN, retrain: RetrainConfig = RETRAIN) -> Path:
+    """Allow only COCO-pretrained candidates or the current champion as a starting point.
+
+    Prototype runs and TamAko783 checkpoints saw images that are now in validation or test, so starting
+    from them would leak (ADR-002).
+    """
+    if "tamako" in str(weights).lower():
+        raise ValueError(f"{weights}: TamAko783 weights are never used to initialise training")
+    if str(weights) in cfg.candidates:
+        return weights
+    if weights.resolve() == retrain.champion.resolve():
+        return weights
+    raise ValueError(f"{weights}: start from a COCO candidate {cfg.candidates} or the champion {retrain.champion}")
+
+
+def build_model_from_weights(weights: Path) -> Any:
+    """Return `ultralytics.YOLO` loaded from an allowed checkpoint (see assert_allowed_init)."""
+    assert_allowed_init(weights)
+    from ultralytics import YOLO
+
+    return YOLO(str(weights))
+
+
 def compile_train_args(
     model_name: str,
     data_yaml: Path,
     cfg: TrainConfig = TRAIN,
     aug: AugmentConfig = AUGMENT,
     smoke: bool = False,
+    epochs: int | None = None,
 ) -> dict:
     """Merge TRAIN and AUGMENT into the kwargs for `model.train(**args)`.
 
@@ -74,7 +100,7 @@ def compile_train_args(
     args = {
         "data": str(data_yaml),
         "imgsz": cfg.imgsz,
-        "epochs": cfg.smoke_epochs if smoke else cfg.epochs,
+        "epochs": epochs or (cfg.smoke_epochs if smoke else cfg.epochs),
         "patience": cfg.patience,
         "batch": cfg.batch,
         "device": cfg.device,
