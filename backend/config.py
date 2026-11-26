@@ -66,6 +66,51 @@ class DataConfig:
 
 
 # ---------------------------------------------------------------------------
+# Grouped train/val split for prototype runs only - SCRUM-38 (the audit replaces it)
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class PrototypeSplitConfig:
+    source_dir: Path = ROOT / "data" / "prototype"  # extracted dataset with the published split
+    output_dir: Path = ROOT / "data" / "prototype" / "grouped"
+    val_share: dict[str, float] = field(default_factory=lambda: {"ground": 0.15, "aerial": 0.20})
+    seed: int = 42
+
+
+# ---------------------------------------------------------------------------
+# Dataset v1: grouped 70/15/15 train/val/test with a frozen test set (ADR-007)
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class DatasetV1Config:
+    unified_dir: Path = ROOT / "data" / "prototype"  # extracted unified dataset (rdd_, rdv_ and uav_ files)
+    uavpdd_zip: Path = ROOT / "data" / "raw" / "uavpdd2023" / "UAV-PDD2023.zip"
+    rdd_drone_zip: Path = ROOT / "data" / "raw" / "rdd2022_china_drone" / "RDD2022" / "China_Drone.zip"
+    highrpd_zip: Path = ROOT / "data" / "raw" / "highrpd" / "HighRPD.zip"
+    processed_dir: Path = ROOT / "data" / "processed"
+    output_dir: Path = ROOT / "data" / "interim_v1"
+    shares: dict[str, dict[str, float]] = field(
+        default_factory=lambda: {
+            "val": {"ground": 0.15, "aerial": 0.15},
+            "test": {"ground": 0.15, "aerial": 0.15},
+        }
+    )
+    seed: int = 42
+    # Near-duplicates: dHash finds candidates, pixels confirm them. Random aerial pairs collide on dHash
+    # (11 of 20,000 within 4 bits, calibration.json), so a dHash match alone never links two images.
+    dhash_max_distance: int = 6  # bits of 64
+    pixel_mad_max: float = 5.0  # mean abs grey difference at 64x64, best of 8 poses: keeps a pair on one side
+    pixel_mad_copy: float = 2.0  # at or below this the pair is the same photo, so val/test score it once
+    uavpdd_classes: dict[str, int] = field(  # Oblique crack and Repair have no 4-class match and are dropped
+        default_factory=lambda: {"Longitudinal crack": 0, "Transverse crack": 1, "Alligator crack": 2, "Pothole": 3}
+    )
+    # UAV-PDD ships each frame as lr_/tb_/r180_ flipped copies of 4 tiles: one frame id links all 12 files.
+    uavpdd_frame_pattern: str = r"^uavpdd_(?:lr|tb|r180)_(?P<frame>\d+)_(?:top|bottom)_(?:left|right)$"
+    rdd_classes: dict[str, int] = field(default_factory=lambda: {"D00": 0, "D10": 1, "D20": 2, "D40": 3})
+    highrpd_pothole_id: int = 2  # HighRPD: 0 line crack, 1 block crack, 2 pothole -> our D40 only
+    handoff_dir: Path = ROOT / "data" / "handoff" / "yolo26n-v1"
+    val_sample: dict[str, int] = field(default_factory=lambda: {"aerial": 70, "ground": 30})
+
+
+# ---------------------------------------------------------------------------
 # Augmentation, training images only (§3.1 Table 3.2)
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
@@ -212,6 +257,8 @@ class ApiConfig:
 
 PATHS = PathsConfig()
 DATA = DataConfig()
+PROTOTYPE_SPLIT = PrototypeSplitConfig()
+DATASET_V1 = DatasetV1Config()
 AUGMENT = AugmentConfig()
 TRAIN = TrainConfig()
 INFER = InferConfig()
