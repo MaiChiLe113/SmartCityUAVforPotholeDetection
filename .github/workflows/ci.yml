@@ -1,0 +1,25 @@
+# Code checks for the training pipeline on every pull request and push to main.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      # Light install: torch and ultralytics are imported inside functions, so the checks don't need them.
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: pytest
