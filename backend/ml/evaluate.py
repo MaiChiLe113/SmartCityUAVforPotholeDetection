@@ -42,7 +42,11 @@ def partition_val_list(image_paths: list[str]) -> dict[str, list[str]]:
     subsets: dict[str, list[str]] = {"all": list(image_paths)}
     for path in image_paths:
         stem = Path(path).stem
-        for name in (view_of(stem), f"source_{stem.split('_', 1)[0]}"):
+        try:
+            view = view_of(stem)
+        except ValueError:  # names outside the known sources (e.g. team photos) count as ground
+            view = "ground"
+        for name in (view, f"source_{stem.split('_', 1)[0]}"):
             subsets.setdefault(name, []).append(path)
     return subsets
 
