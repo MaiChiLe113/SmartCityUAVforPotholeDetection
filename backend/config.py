@@ -138,9 +138,10 @@ class TrainConfig:
     patience: int = 20  # early stopping
     batch: int = 32
     device: str = _env("DEVICE", "0")
-    workers: int = 8
-    optimizer: str = "auto"
+    workers: int = 4  # 8 left only 1.3 GB of 31.8 GB RAM free on Windows, even in a smoke run
+    optimizer: str = "MuSGD"  # pinned: "auto" ignores lr0 and picks AdamW for short smoke runs (ADR-003)
     lr0: float = 0.01
+    momentum: float = 0.9
     seed: int = 42
     smoke_fraction: float = 0.05  # share of data for quick "smoke" runs on a local GPU
     smoke_epochs: int = 3

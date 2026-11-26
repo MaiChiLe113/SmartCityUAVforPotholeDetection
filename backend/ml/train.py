@@ -21,7 +21,17 @@ def train_one(model: Any, train_args: dict) -> TrainResult:
     Ultralytics has a built-in MLflow callback: set MLFLOW_TRACKING_URI and experiment name
     from config.MLOPS before training.
     """
-    raise NotImplementedError("TODO(SCRUM-19, Hai): train and log one model")
+    # TODO(SCRUM-19, Hai): configure MLflow from config.MLOPS and capture the run id.
+    results = model.train(**train_args)
+    metrics = {"mAP50-95": float(results.box.map), "mAP50": float(results.box.map50)}
+    for class_index, ap in zip(results.ap_class_index, results.box.ap, strict=True):
+        metrics[f"AP50-95/{results.names[int(class_index)]}"] = float(ap)
+    return TrainResult(
+        model_name=Path(str(model.ckpt_path)).name,
+        best_weights=Path(model.trainer.best),
+        metrics=metrics,
+        mlflow_run_id=None,
+    )
 
 
 def compare(results: list[TrainResult], out_csv: Path) -> Path:

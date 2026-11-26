@@ -10,4 +10,11 @@ def to_ultralytics_hyp(cfg: AugmentConfig = AUGMENT) -> dict:
 
     Blur/noise are not native Ultralytics args: add them through Albumentations if needed.
     """
-    raise NotImplementedError("TODO(SCRUM-19, Hai): map augment config to Ultralytics args")
+    return {
+        "hsv_v": cfg.hsv_v,
+        "hsv_s": cfg.hsv_s,
+        "fliplr": cfg.fliplr,
+        "degrees": cfg.degrees,
+        "scale": cfg.scale,
+        "mosaic": cfg.mosaic,
+    }

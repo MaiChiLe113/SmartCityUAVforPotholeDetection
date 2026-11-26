@@ -29,6 +29,7 @@ from config import (
     UavConfig,
 )
 from ml import data
+from ml.augment import to_ultralytics_hyp
 
 if TYPE_CHECKING:
     from app.services.detector import Detector
@@ -62,7 +63,12 @@ def build_data_yaml_from_disk() -> Path:
 # --- Model (SCRUM-19, SCRUM-25, Hai) ----------------------------------------
 def build_model(name: str = TRAIN.baseline, cfg: TrainConfig = TRAIN) -> Any:
     """Return an `ultralytics.YOLO` model for one of cfg.candidates (pretrained weights)."""
-    raise NotImplementedError("TODO(SCRUM-19, Hai): return ultralytics.YOLO(name)")
+    if name not in cfg.candidates:
+        raise ValueError(f"unknown model {name!r}, expected one of {cfg.candidates}")
+
+    from ultralytics import YOLO
+
+    return YOLO(name)
 
 
 def compile_train_args(
@@ -77,7 +83,25 @@ def compile_train_args(
     Same args for every candidate so the comparison is fair. `smoke=True` uses
     cfg.smoke_fraction / cfg.smoke_epochs for a quick local check.
     """
-    raise NotImplementedError("TODO(SCRUM-19, Hai): build train kwargs (data, imgsz, epochs, ...)")
+    args = {
+        "data": str(data_yaml),
+        "imgsz": cfg.imgsz,
+        "epochs": cfg.smoke_epochs if smoke else cfg.epochs,
+        "patience": cfg.patience,
+        "batch": cfg.batch,
+        "device": cfg.device,
+        "workers": cfg.workers,
+        "optimizer": cfg.optimizer,
+        "lr0": cfg.lr0,
+        "momentum": cfg.momentum,
+        "seed": cfg.seed,
+        "project": str(PATHS.runs_dir / "train"),
+        "name": f"{Path(model_name).stem}{'-smoke' if smoke else ''}",
+        **to_ultralytics_hyp(aug),
+    }
+    if smoke:
+        args["fraction"] = cfg.smoke_fraction
+    return args
 
 
 # --- Serving (SCRUM-29, Hai) ------------------------------------------------
