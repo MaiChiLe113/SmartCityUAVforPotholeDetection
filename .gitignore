@@ -23,7 +23,15 @@ backend/data/handoff/
 backend/data/media/
 backend/data/*.db
 backend/data/retrain/
+backend/data/retrain_cpu/
 backend/runs/
+
+# Per-run monitoring output and the last decision (uploaded as workflow artifacts instead)
+backend/monitoring/reports/
+backend/monitoring/logs/
+backend/monitoring/alerts/
+backend/artifacts/decision.json
+backend/_retrain/
 backend/weights/
 mlruns/
 *.pt
