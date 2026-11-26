@@ -152,10 +152,12 @@ class TrainConfig:
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class InferConfig:
-    # Per-class confidence thresholds, set on validation data by run/tune_thresholds.py.
+    # Per-class F1-maximising confidences for yolo26n-v1, tuned on interim_v1 validation
+    # (runs/reports/v1/thresholds.json, 2026-11-23). Never tune these on test.
     conf_thresholds: dict[str, float] = field(
-        default_factory=lambda: {"D00": 0.25, "D10": 0.25, "D20": 0.25, "D40": 0.25}
+        default_factory=lambda: {"D00": 0.232, "D10": 0.233, "D20": 0.287, "D40": 0.267}
     )
+    # YOLO26 is end2end (NMS-free), so iou is unused; it applies only to end2end=False exports.
     iou: float = 0.7
     max_det: int = 100
     imgsz: int = 640
