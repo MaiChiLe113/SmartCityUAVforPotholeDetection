@@ -1,0 +1,71 @@
+# Retraining pipeline: ingest new batches -> drift report -> warm-start training -> champion vs challenger.
+# Run with `dvc repro` from backend/ on the GPU runner. Retraining knobs are in params.yaml.
+stages:
+  ingest:
+    cmd: python -m run.ingest_batches
+    deps:
+      - data/new
+      - data/interim_v1
+      - ml/ingest.py
+      - run/ingest_batches.py
+    params:
+      - retrain.val_share
+      - retrain.seed
+    outs:
+      - data/retrain:
+          cache: false
+      - monitoring/reports/ingest_report.json:
+          cache: false
+      - artifacts/metadata/data_version.txt:
+          cache: false
+
+  monitor:
+    cmd: python -m run.drift_report
+    deps:
+      - data/new
+      - monitoring/reference
+      - ml/drift.py
+      - run/drift_report.py
+    outs:
+      - monitoring/reports/drift_report.html:
+          cache: false
+    metrics:
+      - monitoring/reports/drift_report.json:
+          cache: false
+      - artifacts/metrics/monitoring_metrics.json:
+          cache: false
+
+  train:
+    cmd: python -m run.retrain --mode gpu
+    deps:
+      - data/retrain
+      - artifacts/models/champion.pt
+      - ml/retrain.py
+      - ml/train.py
+      - run/retrain.py
+    params:
+      - retrain.epochs
+      - retrain.batch
+    outs:
+      - runs/train/retrain/weights/best.pt
+      - artifacts/metrics/training_history.json:
+          cache: false
+      - artifacts/metrics/thresholds.json:
+          cache: false
+      - artifacts/metadata/last_retrain.txt:
+          cache: false
+
+  evaluate:
+    cmd: python -m run.evaluate_retrain
+    deps:
+      - runs/train/retrain/weights/best.pt
+      - artifacts/models/champion.pt
+      - data/retrain
+      - ml/promotion.py
+      - run/evaluate_retrain.py
+    metrics:
+      - artifacts/metrics/evaluation_metrics.json:
+          cache: false
+    outs:
+      - artifacts/decision.json:
+          cache: false
