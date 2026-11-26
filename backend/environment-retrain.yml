@@ -1,0 +1,24 @@
+# Conda environment for a PC that hosts the self-hosted `gpu` runner (or trains locally).
+#   conda env create -f backend/environment-retrain.yml
+#   conda activate pothole-retrain
+# Versions match the YOLO26n v1 training run (docs/training/yolo26n-v1.md).
+name: pothole-retrain
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu126
+      - torch==2.14.1
+      - torchvision
+      - ultralytics==8.4.184
+      - opencv-python>=4.10
+      - pillow>=10.0
+      - numpy>=1.26
+      - scipy>=1.11
+      - pyyaml>=6.0
+      - python-dotenv>=1.0
+      - dvc[s3]>=3.50,<4
+      - ruff>=0.6
+      - pytest>=8.0
