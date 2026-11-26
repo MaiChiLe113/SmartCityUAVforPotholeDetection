@@ -168,10 +168,12 @@ class InferConfig:
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class PromotionConfig:
+    # Decided on validation only. The frozen test set is scored after the decision, for the record.
+    min_map_gain: float = 0.0  # challenger val mAP50-95 must beat the champion by more than this
     max_class_ap_drop: float = 0.01
     require_aerial_gain: bool = True
-    require_field_no_worse: bool = True
-    require_edge_checks: bool = True
+    require_field_no_worse: bool = True  # reported as "not available" until a field set exists
+    require_edge_checks: bool = True  # reported as "not available" until edge export is on main
 
 
 # ---------------------------------------------------------------------------
@@ -179,22 +181,56 @@ class PromotionConfig:
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class MonitorConfig:
-    drift_features: tuple[str, ...] = (
-        "brightness",
-        "contrast",
-        "blur",
-        "resolution",
-        "view",
-        "predicted_class",
-    )
+    # Image features compared between new data and the training reference (two-sample KS test each).
+    drift_features: tuple[str, ...] = ("brightness", "contrast", "blur", "width", "height", "aspect")
+    # Categorical distributions compared with a chi-square test: view of the image and labelled classes.
+    drift_categories: tuple[str, ...] = ("view", "class")
     ks_pvalue: float = 0.05
-    drift_feature_share: float = 1 / 3  # alert if more than this share of features drift
+    drift_feature_share: float = 1 / 3  # alert if more than this share of the tests drift
+    reference_sample: int = 2000  # training images in the reference feature table
+    reference_seed: int = 42
     corrections_window: int = 200
     corrections_rate: float = 0.15
     uav_window: int = 50
     uav_disagree_rate: float = 0.20
     min_new_images: int = 500
     scheduled_review_days: int = 30
+
+
+# ---------------------------------------------------------------------------
+# Retraining on new data (Group Task 3). Knobs that DVC tracks live in params.yaml.
+# ---------------------------------------------------------------------------
+def _params() -> dict:
+    path = ROOT / "params.yaml"
+    if not path.exists():
+        return {}
+    import yaml
+
+    return (yaml.safe_load(path.read_text()) or {}).get("retrain", {})
+
+
+_RETRAIN_PARAMS = _params()
+
+
+@dataclass(frozen=True)
+class RetrainConfig:
+    new_data_dir: Path = ROOT / "data" / "new"  # one folder per batch: batch_NNN/{images,labels}
+    retrain_dir: Path = ROOT / "data" / "retrain"  # v1 lists plus accepted new images
+    cpu_dir: Path = ROOT / "data" / "retrain_cpu"  # small lists for the hosted CPU demo
+    artifacts_dir: Path = ROOT / "artifacts"
+    champion: Path = ROOT / "artifacts" / "models" / "champion.pt"
+    metadata_dir: Path = ROOT / "artifacts" / "metadata"
+    metrics_dir: Path = ROOT / "artifacts" / "metrics"
+    monitoring_dir: Path = ROOT / "monitoring"
+    run_name: str = "retrain"  # runs/train/<run_name>, overwritten by each retrain
+    val_share: float = float(_RETRAIN_PARAMS.get("val_share", 0.15))
+    seed: int = int(_RETRAIN_PARAMS.get("seed", 42))
+    epochs: int = int(_RETRAIN_PARAMS.get("epochs", 20))  # warm start from the champion
+    batch: int = int(_RETRAIN_PARAMS.get("batch", 32))
+    cpu_epochs: int = int(_RETRAIN_PARAMS.get("cpu_epochs", 3))
+    cpu_imgsz: int = int(_RETRAIN_PARAMS.get("cpu_imgsz", 320))
+    cpu_replay: int = int(_RETRAIN_PARAMS.get("cpu_replay", 600))  # v1 train images mixed into the CPU demo
+    cpu_val: int = int(_RETRAIN_PARAMS.get("cpu_val", 400))
 
 
 PATHS = PathsConfig()
@@ -206,3 +242,4 @@ TRAIN = TrainConfig()
 INFER = InferConfig()
 PROMOTION = PromotionConfig()
 MONITOR = MonitorConfig()
+RETRAIN = RetrainConfig()
