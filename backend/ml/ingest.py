@@ -250,6 +250,11 @@ def ingest(cfg: RetrainConfig = RETRAIN, v1: DatasetV1Config = DATASET_V1) -> In
     for stem, ref_stem, _bits in pairs:
         if stem in leaks:
             continue
+        if not ref[ref_stem]["path"].exists():
+            # The reference image is not on this machine (hosted runner with lists only): treat the
+            # dHash match as a leak rather than risk a near-copy of a test image in training.
+            leaks[stem] = f"possible_near_duplicate_of_{ref[ref_stem]['side']}:{ref_stem}"
+            continue
         mad = split_v1.best_pose_mad(thumb(by_stem[stem].image), thumb(ref[ref_stem]["path"]))
         if mad <= v1.pixel_mad_max:
             leaks[stem] = f"near_duplicate_of_{ref[ref_stem]['side']}:{ref_stem}"
