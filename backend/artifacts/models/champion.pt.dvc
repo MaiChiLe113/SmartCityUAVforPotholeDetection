@@ -1,0 +1,5 @@
+outs:
+- md5: 313133e19a5802964dd68ee5e27d6691
+  size: 5472325
+  hash: md5
+  path: champion.pt
