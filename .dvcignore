@@ -1,3 +1,7 @@
 # Add patterns of files dvc should ignore, which could improve
 # the performance. Learn more at
 # https://dvc.org/doc/user-guide/dvcignore
+
+# Ultralytics label caches: machine-specific, rebuilt on each machine. Tracking them makes them read-only
+# on runners that link files from the DVC cache, and Ultralytics then fails to rewrite them.
+*.cache

@@ -1,8 +1,10 @@
 """Build new-data batches from an RDD2022 country zip.
 
-python -m run.prepare_batches --zip data/raw/rdd2022_czech/RDD2022_Czech.zip --country Czech --batches 3
+python -m run.prepare_batches --zip data/raw/rdd2022_czech/Czech.zip --country Czech --batches 5
 
-Writes data/new/batch_001..003. Add one with `dvc add data/new/batch_001` to trigger retraining.
+Writes data/new/batch_001..005. RDD2022 country zips are inside the FigShare archive
+(RDD2022/<Country>.zip, figshare.com/articles/dataset/21431547).
+Add one with `dvc add data/new/batch_001` to trigger retraining.
 """
 
 import argparse

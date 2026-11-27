@@ -83,6 +83,13 @@ backend/
 - **Human approval.** The `promote` job runs in the `model-approval` environment, so a reviewer must click
   Approve. The new champion reaches `main` as a pull request.
 
+**What to expect from a retrain.** Retraining warm-starts from the champion with the same learning-rate
+schedule as a training run from scratch (lr0 0.01 with warm-up), so the first epochs move the model away
+from its tuned weights. The runner smoke test (1 epoch) scored val mAP50-95 0.194 against the champion's
+0.303. A 20-epoch run recovers part of that, but the usual result is **keep the champion**. That is the
+promotion gate doing its job. The assignment doesn't require a promotion, so a lower fine-tuning learning
+rate is left as future work.
+
 ## Adding a batch of new data
 
 Images and labels must be YOLO format, with classes 0 D00, 1 D10, 2 D20, 3 D40. An empty label file means no
@@ -91,7 +98,7 @@ damage.
 ```bash
 cd backend
 # Either build batches from an RDD2022 country zip ...
-python -m run.prepare_batches --zip data/raw/rdd2022_czech/RDD2022_Czech.zip --country Czech --batches 3
+python -m run.prepare_batches --zip data/raw/rdd2022_czech/Czech.zip --country Czech --batches 5
 # ... or copy your own images/ and labels/ into data/new/batch_004/
 
 dvc add data/new/batch_002
@@ -155,18 +162,20 @@ Miniconda or Anaconda, and about 25 GB of free disk.
 2. **Pull the data once into a shared cache.** The runner's own checkout reuses this cache, so later jobs link
    files instead of downloading 9 GB again.
    ```bash
-   dvc cache dir --global D:/dvc-cache          # any folder with ~10 GB free; ~/dvc-cache on Linux
+   dvc cache dir --global C:/dvc-cache          # any folder with ~10 GB free; ~/dvc-cache on Linux
    dvc remote modify origin --local access_key_id <DagsHub token>
    dvc remote modify origin --local secret_access_key <DagsHub token>
-   dvc pull
+   dvc pull --allow-missing    # the pipeline's own outputs don't exist until the first dvc repro
    ```
 3. **Check the machine.** It must print `READY`.
    ```bash
    cd backend && python -m run.check_env
    ```
 4. **Register the runner.** A repository admin opens Settings → Actions → Runners → New self-hosted runner,
-   picks the host's OS and shares the one-time token. On the host, follow the download commands shown on
-   that page, then:
+   picks the host's OS and shares the one-time token. On the host, follow the download and extract commands
+   shown on that page, then run the command below. Put the runner folder on the **same drive as the DVC
+   cache** (for example `C:\actions-runner` with `C:/dvc-cache`), so each job links the 9 GB of data instead
+   of copying it.
    ```bash
    ./config.cmd --url https://github.com/MaiChiLe113/SmartCityUAVforPotholeDetection --token <TOKEN> --labels gpu --name <your-pc> --unattended
    # Linux: ./config.sh with the same arguments
@@ -174,11 +183,21 @@ Miniconda or Anaconda, and about 25 GB of free disk.
 5. **Describe the host.** Create `.env` in the runner folder (next to `run.cmd`):
    ```
    RETRAIN_PY=C:\Users\<you>\miniconda3\envs\pothole-retrain\python.exe
-   DVC_CACHE_DIR=D:/dvc-cache
+   DVC_CACHE_DIR=C:/dvc-cache
    ```
    On Linux, `RETRAIN_PY=/home/<you>/miniconda3/envs/pothole-retrain/bin/python`.
-6. **Start it** with `run.cmd` (Windows) or `./run.sh` (Linux). It shows **Idle** under Settings → Actions →
-   Runners. Set `RETRAIN_MODE=gpu`.
+6. **Start it.** On Linux, run `./run.sh`. On Windows, the workflow's steps use `bash`, and the `bash` on PATH is
+   often WSL's (`C:\Windows\system32\bash.exe`), which would run the job inside Linux. Create
+   `start-runner.cmd` in the runner folder so Git Bash comes first, and always start the runner with it:
+   ```bat
+   @echo off
+   set "PATH=C:\Program Files\Git\bin;%PATH%"
+   call "%~dp0run.cmd"
+   ```
+   It shows **Idle** under Settings → Actions → Runners. Set `RETRAIN_MODE=gpu`.
+
+   **Test it:** Actions → Retrain on New Data → Run workflow → mode `gpu`, **smoke** ✓. The GPU job runs the
+   whole pipeline with 1 epoch and never promotes. It takes about 20 minutes and should end green.
 7. **Hand over.** Stop the runner and remove it with `./config.cmd remove --token <removal token>` (the admin
    gets the token from the runner's page). The next host repeats steps 1–6.
 
@@ -188,6 +207,61 @@ Security, because the repository is public:
 - Outside contributors need approval before their workflows run.
 - Run the runner under a normal user account.
 - Stop it when it isn't needed.
+
+## Current setup: Hai's PC as the always-on GPU runner
+
+The team's runner is Hai's PC. Nobody else needs a GPU: anyone who merges a batch or clicks **Run workflow**
+gets their GPU job run there.
+
+| Item | Value |
+|---|---|
+| Runner name and labels | `hai-rtx3060`: `self-hosted`, `Windows`, `X64`, `gpu` |
+| Runner folder | `C:\actions-runner` (started with `start-runner.cmd`) |
+| Python | conda env `aistuff`: Python 3.11, torch 2.14.1 cu126, ultralytics 8.4.184, DVC 3.67 |
+| DVC cache | `C:/dvc-cache`, the same drive as the runner, so jobs link files |
+| GPU | RTX 3060, 12 GB |
+| Repository variable | `RETRAIN_MODE=gpu`, permanently |
+
+Measured times on this PC:
+
+| Stage | Time |
+|---|---|
+| `dvc pull` into the job folder | about 3 minutes (cache already on C:) |
+| `check_env` | about 10 seconds |
+| Training | about 3.6 minutes per epoch (21,000+ images, batch 32) |
+| Evaluation: champion and challenger on validation and test | about 11 minutes |
+| **Smoke test (1 epoch)** | **about 20 minutes** |
+| **Full retrain (20 epochs)** | **about 90 minutes** |
+
+### Keeping it always on
+
+1. **Start the runner automatically when Hai logs in.** Run once in a normal (not admin) PowerShell:
+   ```powershell
+   schtasks /Create /TN "GitHub Actions runner" /TR "C:\actions-runner\start-runner.cmd" /SC ONLOGON /RL LIMITED
+   ```
+   This opens the runner window at every logon. Don't install the runner as a Windows service: a service runs
+   as a system account that can't use the conda environment in Hai's user folder or the Git Bash PATH from
+   `start-runner.cmd`. To undo: `schtasks /Delete /TN "GitHub Actions runner" /F`.
+2. **Don't let the PC sleep while plugged in.** The screen can still turn off:
+   ```powershell
+   powercfg /change standby-timeout-ac 0
+   powercfg /change hibernate-timeout-ac 0
+   ```
+3. **Stay logged in.** Locking the screen (Win+L) is fine. Signing out or restarting stops the runner until
+   the next logon. After Windows Update restarts, log in again and check the runner shows **Idle**.
+4. **Leave the runner window open.** Closing it takes the runner offline. It prints one line per job, for
+   example `Running job: Retrain on the GPU runner` and then `Job ... completed with result: Succeeded`.
+5. **Disk space.** Each job resets its folder (`C:\actions-runner\_work`) and links data from `C:/dvc-cache`.
+   New batches (about 50 MB each) and challenger weights (5 MB) add to the cache. Keep about 15 GB free on C:.
+
+### Checking on it
+
+- **GitHub:** Settings → Actions → Runners shows `hai-rtx3060` as **Idle**, **Active** (running a job) or
+  **Offline**. Collaborators without admin rights can see which runner took a job in the job log header.
+- **On the PC:** the runner window, and the logs in `C:\actions-runner\_diag\` (`Worker_*.log` has one file
+  per job, ending with `Job result after all job steps finish: Succeeded` or `Failed`).
+- **If the PC is off:** GPU jobs wait as "Queued" for up to 24 hours, then fail. For a longer absence, set
+  `RETRAIN_MODE=cpu`, so runs use the hosted CPU demo instead.
 
 ## Running the pipeline locally
 
@@ -209,5 +283,6 @@ dvc dag                                     # pipeline graph
 | DagsHub push fails on size | The free storage quota is used up. Check the quota on DagsHub |
 | `check_env` prints `NOT READY` | Read the FAIL lines: wrong versions, no CUDA, missing data, or the test lock changed |
 | `frozen test lock` fails | Test images or labels changed. Restore them with `dvc checkout data/prototype/images data/prototype/labels` |
-| `promote` didn't run | The challenger did not pass the validation checks; see `decision.json` in the run's artifacts |
+| `promote` didn't run | The challenger did not pass the validation checks (the usual result, see "What to expect from a retrain"); see `decision.json` in the run's artifacts |
+| Training fails with `PermissionError ... labels.cache` | An Ultralytics label cache is read-only in the job folder. `*.cache` is in `.dvcignore`; delete any leftover `*.cache` files under `C:\actions-runner\_work\...\backend\data` |
 | The promotion PR has no checks | PRs opened with `GITHUB_TOKEN` don't start workflows; close and reopen it |

@@ -28,6 +28,10 @@ on:
         description: "Retrain even without new data"
         type: boolean
         default: false
+      smoke:
+        description: "Runner test: retrain for 1 epoch and never promote"
+        type: boolean
+        default: false
 
 concurrency:
   group: retrain
@@ -86,7 +90,7 @@ jobs:
 
       - name: Evaluate retraining triggers
         id: trigger
-        run: python -m run.retrain_trigger ${{ inputs.force && '--force' || '' }}
+        run: python -m run.retrain_trigger ${{ (inputs.force || inputs.smoke) && '--force' || '' }}
 
       - name: Choose GPU or CPU
         id: mode
@@ -153,20 +157,33 @@ jobs:
           dvc config --local cache.type "hardlink,copy"
 
       - name: Pull data, champion and reference
-        run: dvc pull
+        # Only files tracked by .dvc pointers: the pipeline's own outputs (runs/train/retrain/...) don't exist
+        # until dvc repro creates them, and a bare `dvc pull` fails on them.
+        run: git ls-files '*.dvc' | xargs dvc pull
 
       - name: Check this machine
         run: python -m run.check_env
+
+      - name: Smoke test settings (1 epoch, never promoted)
+        if: inputs.smoke
+        run: |
+          sed -i 's/^  epochs: .*/  epochs: 1         # smoke test (workflow input), not committed/' params.yaml
+          grep -n "epochs" params.yaml
 
       - name: Run the pipeline (ingest, monitor, train, evaluate)
         run: dvc repro
 
       - name: Read the decision
         id: decision
+        env:
+          SMOKE: ${{ inputs.smoke && 'true' || 'false' }}
         run: |
           promote=$(python -c "import json; print(str(json.load(open('artifacts/decision.json'))['promote']).lower())")
+          if [ "$SMOKE" = "true" ]; then promote=false; fi
           echo "promote=$promote" >> "$GITHUB_OUTPUT"
-          python -m run.workflow_summary --title "Retraining on GPU" >> "$GITHUB_STEP_SUMMARY"
+          title="Retraining on GPU"
+          if [ "$SMOKE" = "true" ]; then title="Runner smoke test on GPU (1 epoch, never promoted)"; fi
+          python -m run.workflow_summary --title "$title" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload retraining results
         if: always()
