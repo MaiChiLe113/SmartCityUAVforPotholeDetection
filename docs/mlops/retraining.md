@@ -179,8 +179,15 @@ Miniconda or Anaconda, and about 25 GB of free disk.
    DVC_CACHE_DIR=D:/dvc-cache
    ```
    On Linux, `RETRAIN_PY=/home/<you>/miniconda3/envs/pothole-retrain/bin/python`.
-6. **Start it** with `run.cmd` (Windows) or `./run.sh` (Linux). It shows **Idle** under Settings → Actions →
-   Runners. Set `RETRAIN_MODE=gpu`.
+6. **Start it.** On Linux, run `./run.sh`. On Windows, the workflow's steps use `bash`, and the `bash` on PATH is
+   often WSL's (`C:\Windows\system32\bash.exe`), which would run the job inside Linux. Create
+   `start-runner.cmd` in the runner folder so Git Bash comes first, and always start the runner with it:
+   ```bat
+   @echo off
+   set "PATH=C:\Program Files\Git\bin;%PATH%"
+   call "%~dp0run.cmd"
+   ```
+   It shows **Idle** under Settings → Actions → Runners. Set `RETRAIN_MODE=gpu`.
 7. **Hand over.** Stop the runner and remove it with `./config.cmd remove --token <removal token>` (the admin
    gets the token from the runner's page). The next host repeats steps 1–6.
 

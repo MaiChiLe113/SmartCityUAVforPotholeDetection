@@ -19,7 +19,7 @@ person to approve before the new model replaces the old one.
 | GitHub collaborator with **Write** access to `MaiChiLe113/SmartCityUAVforPotholeDetection` | Chi (repo owner) | Push branches, open and merge PRs, run workflows |
 | Listed as a **required reviewer** of the `model-approval` environment | Chi (Settings → Environments → `model-approval`) | Click **Approve** on screen |
 | A **DagsHub token** with write access to `0ceanya/pothole-uav-data` | Hai (repo `0ceanya/pothole-uav-data` → Settings → Collaborators, then your own token from DagsHub → User settings → Tokens) | `dvc pull` and `dvc push` the demo batches |
-| Which PC hosts the **GPU runner** on the day | Team decision | GPU retraining runs there. If it's not your PC, the host just keeps `run.cmd` open |
+| Which PC hosts the **GPU runner** on the day | Team decision | GPU retraining runs there. If it's not your PC, the host just keeps the runner window (`start-runner.cmd`) open |
 
 Never paste the DagsHub token into a file in the repo, a commit, a chat or the video. It only goes into the
 `dvc remote modify --local` commands below, which write the git-ignored `.dvc/config.local`.
@@ -101,11 +101,11 @@ new host takes about an hour, mostly the 9 GB data download. Follow **"Hosting t
 3. Run `python -m run.check_env` until it prints `READY`.
 4. Register the runner with a token from Chi, labelled `gpu`.
 5. Create the runner `.env` file with `RETRAIN_PY` and `DVC_CACHE_DIR`.
-6. Start it with `run.cmd`.
+6. Start it with `start-runner.cmd` on Windows (it puts Git Bash first on PATH), or `./run.sh` on Linux.
 
 On the day:
 
-- The host PC is on, `run.cmd` is running, and Settings → Actions → Runners shows the runner **Idle**.
+- The host PC is on, `start-runner.cmd` is running, and Settings → Actions → Runners shows the runner **Idle**.
 - Chi sets the repository variable `RETRAIN_MODE` to `gpu` (Settings → Secrets and variables → Actions →
   Variables). Set it back to `cpu` afterwards.
 - If no GPU PC is available, keep `RETRAIN_MODE=cpu`. Every scene still works, but retraining is the short CPU
@@ -190,7 +190,7 @@ the Czech photos look different from the training mix (different camera, size an
 what the monitor is for.
 
 ### Scene 6 — GPU retraining (1:15)
-**Show:** the runners page with the runner **Active** (or the host's `run.cmd` window showing
+**Show:** the runners page with the runner **Active** (or the host's runner window showing
 "Running job: Retrain on the GPU runner"). If you're on the host, `nvidia-smi`. In the job log: "Check this
 machine" ending with `READY`, then "Run the pipeline" starting `dvc repro`. Then switch to the finished
 `batch_001` run from the day before: its Summary shows champion vs challenger on validation and test, and the
@@ -233,7 +233,7 @@ register the runner.
 
 - Merge or close any open `chore(retrain): promote …` pull request (merge only if it was approved on purpose).
 - Make sure the temporary 15-minute schedule is reverted.
-- Ask Chi to set `RETRAIN_MODE` back to `cpu`, and the host to stop `run.cmd`.
+- Ask Chi to set `RETRAIN_MODE` back to `cpu`, and the host to close the runner window.
 - Delete your local `data/batch-00N` branches if you like; they're merged.
 
 ## 9. Making the data visible on the DagsHub website
@@ -256,7 +256,7 @@ After that, DagsHub shows `backend/data/prototype/images` and the other tracked 
 |---|---|
 | `dvc pull` asks for credentials or returns 401/403 | Redo section 2 step 4 with a valid token, from the repository root |
 | No run appears after merging the batch PR | The PR must change `backend/data/new/*.dvc`; check that the file was committed |
-| `Retrain on the GPU runner` stays "Queued" | The runner is offline. Start `run.cmd` on the host, or set `RETRAIN_MODE=cpu` and run again |
+| `Retrain on the GPU runner` stays "Queued" | The runner is offline. Start `start-runner.cmd` on the host, or set `RETRAIN_MODE=cpu` and run again |
 | `Check data` says 0 new images | That batch was already trained on. Use the next batch |
 | `promote` didn't run | The challenger didn't pass the validation checks. Show `decision.json` (scene 7 alternative) |
 | No "Review deployments" button | You're not a required reviewer of `model-approval`. Ask Chi |
