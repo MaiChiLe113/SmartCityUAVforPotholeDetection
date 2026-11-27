@@ -91,7 +91,7 @@ damage.
 ```bash
 cd backend
 # Either build batches from an RDD2022 country zip ...
-python -m run.prepare_batches --zip data/raw/rdd2022_czech/RDD2022_Czech.zip --country Czech --batches 3
+python -m run.prepare_batches --zip data/raw/rdd2022_czech/Czech.zip --country Czech --batches 5
 # ... or copy your own images/ and labels/ into data/new/batch_004/
 
 dvc add data/new/batch_002
@@ -166,7 +166,9 @@ Miniconda or Anaconda, and about 25 GB of free disk.
    ```
 4. **Register the runner.** A repository admin opens Settings → Actions → Runners → New self-hosted runner,
    picks the host's OS and shares the one-time token. On the host, follow the download commands shown on
-   that page, then:
+   that page, then run the commands below. Put the runner folder on the **same drive as the DVC cache**
+   (for example `D:ctions-runner` with `D:/dvc-cache`). Each job then links the 9 GB of data instead of
+   copying it.
    ```bash
    ./config.cmd --url https://github.com/MaiChiLe113/SmartCityUAVforPotholeDetection --token <TOKEN> --labels gpu --name <your-pc> --unattended
    # Linux: ./config.sh with the same arguments
