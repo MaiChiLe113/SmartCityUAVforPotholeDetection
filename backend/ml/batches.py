@@ -1,7 +1,10 @@
 """Turn RDD2022 country images that the unified dataset dropped into new-data batches for retraining.
 
-The unified dataset kept 1,072 of 2,829 labelled RDD2022 Czech images. The rest are real, labelled road
-photos the model has never seen, which makes them an honest stand-in for newly collected data.
+The unified dataset kept exactly the RDD2022 images that contain damage. For Czech that is 1,072 of 2,829
+labelled images; the other 1,757 are labelled road photos with no damage (empty YOLO label files). They are
+real images the model has never seen, and adding clean images of this kind is the planned next data step for
+reducing false alarms (PROJECT_CONTEXT §6, at most about 10% of training). Damaged images are kept too when
+a country has any that the unified dataset dropped.
 Leakage against v1 validation and test is still checked at ingest time (ml.ingest).
 """
 
@@ -60,8 +63,8 @@ def prepare_country_batches(
     records = convert.convert_voc_dir(
         dropped, staging, v1.rdd_classes, lambda p: f"rdd_{country}_{country}_{number.search(p.stem)[1]}"
     )
-    damaged = [r["stem"] for r in records if r["tag"] == convert.DAMAGED]
-    batches = split_into_batches(damaged, n_batches, cfg.seed)
+    usable = [r["stem"] for r in records if r["tag"] in (convert.DAMAGED, convert.CLEAN)]
+    batches = split_into_batches(usable, n_batches, cfg.seed)
     written = {}
     for k, stems in enumerate(batches, start=first_index):
         out = cfg.new_data_dir / f"batch_{k:03d}"
@@ -80,6 +83,8 @@ def prepare_country_batches(
         "labelled_in_zip": len(pairs),
         "already_in_unified": len(kept),
         "dropped_converted": len(records),
-        "dropped_without_damage": len(records) - len(damaged),
+        "dropped_damaged": sum(r["tag"] == convert.DAMAGED for r in records),
+        "dropped_clean": sum(r["tag"] == convert.CLEAN for r in records),
+        "dropped_unmapped_only": len(records) - len(usable),
         "batches": written,
     }
