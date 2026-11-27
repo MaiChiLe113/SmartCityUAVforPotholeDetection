@@ -158,7 +158,7 @@ Miniconda or Anaconda, and about 25 GB of free disk.
    dvc cache dir --global D:/dvc-cache          # any folder with ~10 GB free; ~/dvc-cache on Linux
    dvc remote modify origin --local access_key_id <DagsHub token>
    dvc remote modify origin --local secret_access_key <DagsHub token>
-   dvc pull
+   dvc pull --allow-missing    # the pipeline's own outputs don't exist until the first dvc repro
    ```
 3. **Check the machine.** It must print `READY`.
    ```bash

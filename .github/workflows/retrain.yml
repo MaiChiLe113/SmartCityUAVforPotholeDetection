@@ -157,7 +157,9 @@ jobs:
           dvc config --local cache.type "hardlink,copy"
 
       - name: Pull data, champion and reference
-        run: dvc pull
+        # Only files tracked by .dvc pointers: the pipeline's own outputs (runs/train/retrain/...) don't exist
+        # until dvc repro creates them, and a bare `dvc pull` fails on them.
+        run: git ls-files '*.dvc' | xargs dvc pull
 
       - name: Check this machine
         run: python -m run.check_env
