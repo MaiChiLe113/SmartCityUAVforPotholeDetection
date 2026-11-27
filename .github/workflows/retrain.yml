@@ -1,0 +1,305 @@
+# Automated retraining and monitoring for the YOLO pothole model.
+#
+# Triggers: a push to main that adds a data batch (backend/data/new/*.dvc) or changes params.yaml,
+# a weekly schedule, and a manual run. Monitoring (data checks, drift) runs every time; retraining runs
+# when there are images the champion was not trained on (or a manual run forces it).
+#
+# Retraining runs on a self-hosted runner labelled `gpu` (any team PC, see docs/mlops/retraining.md) or,
+# when repository variable RETRAIN_MODE is `cpu`, as a short demo on a hosted runner. A new champion is
+# only made after a reviewer approves the `model-approval` environment; the result arrives as a PR.
+name: Retrain on New Data
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/data/new/*.dvc"
+      - "backend/params.yaml"
+  schedule:
+    - cron: "0 18 * * 0" # weekly, Monday 01:00 in Vietnam (UTC+7)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Where to retrain (auto = repository variable RETRAIN_MODE)"
+        type: choice
+        options: [auto, gpu, cpu]
+        default: auto
+      force:
+        description: "Retrain even without new data"
+        type: boolean
+        default: false
+
+concurrency:
+  group: retrain
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+    working-directory: backend
+
+env:
+  DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  check:
+    name: Check data, drift and triggers
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      should_retrain: ${{ steps.trigger.outputs.should_retrain }}
+      mode: ${{ steps.mode.outputs.mode }}
+      drift_alert: ${{ steps.drift.outputs.drift_alert }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install monitoring dependencies
+        run: pip install -e ".[dev,dvc]" opencv-python-headless
+
+      - name: Configure DVC remote credentials
+        run: |
+          dvc remote modify origin --local access_key_id "$DAGSHUB_TOKEN"
+          dvc remote modify origin --local secret_access_key "$DAGSHUB_TOKEN"
+
+      - name: Pull new batches and the drift reference
+        run: |
+          shopt -s nullglob
+          batches=(data/new/*.dvc)
+          dvc pull monitoring/reference.dvc "${batches[@]}"
+
+      - name: Find batches the champion was not trained on
+        id: pending
+        run: python -m run.ingest_batches --check-only
+
+      - name: Drift and data-quality report
+        id: drift
+        run: python -m run.drift_report
+
+      - name: Evaluate retraining triggers
+        id: trigger
+        run: python -m run.retrain_trigger ${{ inputs.force && '--force' || '' }}
+
+      - name: Choose GPU or CPU
+        id: mode
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
+          VAR_MODE: ${{ vars.RETRAIN_MODE }}
+        run: |
+          mode="${INPUT_MODE:-auto}"
+          if [ "$mode" = "auto" ]; then mode="${VAR_MODE:-cpu}"; fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "Retraining mode: $mode"
+
+      - name: Job summary
+        run: python -m run.workflow_summary --title "Monitoring (${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open an issue on drift
+        if: steps.drift.outputs.drift_alert == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -m run.workflow_summary --title "Drift alert" > drift_issue.md
+          echo "" >> drift_issue.md
+          echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> drift_issue.md
+          gh issue create --title "Drift alert in run ${{ github.run_number }}" --body-file drift_issue.md
+
+      - name: Upload monitoring reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitoring-${{ github.run_id }}
+          path: |
+            backend/monitoring/reports/
+            backend/monitoring/logs/
+            backend/monitoring/alerts/
+            backend/artifacts/metrics/monitoring_metrics.json
+          if-no-files-found: ignore
+
+  retrain-gpu:
+    name: Retrain on the GPU runner
+    needs: check
+    if: needs.check.outputs.should_retrain == 'true' && needs.check.outputs.mode == 'gpu'
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 300
+    outputs:
+      promote: ${{ steps.decision.outputs.promote }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the host's Python environment
+        run: |
+          if [ -z "${RETRAIN_PY:-}" ]; then
+            echo "::error::RETRAIN_PY is not set. Add it to the runner's .env file (docs/mlops/retraining.md)."
+            exit 1
+          fi
+          envdir="$("$RETRAIN_PY" -c 'import os, sys; print(os.path.dirname(sys.executable))')"
+          echo "$envdir" >> "$GITHUB_PATH"
+          if [ -d "$envdir/Scripts" ]; then echo "$envdir/Scripts" >> "$GITHUB_PATH"; fi
+
+      - name: Configure DVC remote and shared cache
+        run: |
+          dvc remote modify origin --local access_key_id "$DAGSHUB_TOKEN"
+          dvc remote modify origin --local secret_access_key "$DAGSHUB_TOKEN"
+          if [ -n "${DVC_CACHE_DIR:-}" ]; then dvc cache dir --local "$DVC_CACHE_DIR"; fi
+          dvc config --local cache.type "hardlink,copy"
+
+      - name: Pull data, champion and reference
+        run: dvc pull
+
+      - name: Check this machine
+        run: python -m run.check_env
+
+      - name: Run the pipeline (ingest, monitor, train, evaluate)
+        run: dvc repro
+
+      - name: Read the decision
+        id: decision
+        run: |
+          promote=$(python -c "import json; print(str(json.load(open('artifacts/decision.json'))['promote']).lower())")
+          echo "promote=$promote" >> "$GITHUB_OUTPUT"
+          python -m run.workflow_summary --title "Retraining on GPU" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload retraining results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrain-${{ github.run_id }}
+          path: |
+            backend/artifacts/metrics/
+            backend/artifacts/metadata/
+            backend/artifacts/decision.json
+            backend/runs/train/retrain/weights/best.pt
+            backend/runs/train/retrain/results.csv
+            backend/runs/train/retrain/*.png
+            backend/monitoring/reports/
+            backend/dvc.lock
+          if-no-files-found: ignore
+
+  retrain-cpu:
+    name: Retrain demo on a hosted CPU runner
+    needs: check
+    if: needs.check.outputs.should_retrain == 'true' && needs.check.outputs.mode == 'cpu'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install CPU training stack
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev,dvc]" ultralytics==8.4.184
+          pip uninstall -y opencv-python && pip install opencv-python-headless
+
+      - name: Configure DVC remote credentials
+        run: |
+          dvc remote modify origin --local access_key_id "$DAGSHUB_TOKEN"
+          dvc remote modify origin --local secret_access_key "$DAGSHUB_TOKEN"
+
+      - name: Pull lists, champion, reference and new batches
+        run: |
+          shopt -s nullglob
+          batches=(data/new/*.dvc)
+          dvc pull data/interim_v1.dvc artifacts/models/champion.pt.dvc monitoring/reference.dvc "${batches[@]}"
+
+      - name: Ingest new batches
+        run: python -m run.ingest_batches
+
+      - name: Plan the small CPU split and pull only its images
+        run: |
+          python -m run.retrain --mode cpu --plan
+          xargs -n 200 dvc pull < data/retrain_cpu/required_files.txt
+
+      - name: Train (short demo)
+        run: python -m run.retrain --mode cpu
+
+      - name: Compare with the champion on the validation sample
+        run: |
+          python -m run.evaluate_retrain --mode cpu
+          python -m run.workflow_summary --title "Retraining demo on CPU (never promoted)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload demo results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrain-cpu-${{ github.run_id }}
+          path: |
+            backend/artifacts/metrics/
+            backend/artifacts/decision.json
+            backend/runs/train/retrain-cpu/results.csv
+            backend/runs/train/retrain-cpu/*.png
+            backend/monitoring/reports/
+          if-no-files-found: ignore
+
+  promote:
+    name: Promote the new model (needs approval)
+    needs: retrain-gpu
+    if: needs.retrain-gpu.outputs.promote == 'true'
+    runs-on: ubuntu-latest
+    environment: model-approval
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install DVC
+        run: pip install -e ".[dvc]"
+
+      - name: Download the retraining results
+        uses: actions/download-artifact@v4
+        with:
+          name: retrain-${{ github.run_id }}
+          path: backend/_retrain
+
+      - name: Configure DVC remote credentials
+        run: |
+          dvc remote modify origin --local access_key_id "$DAGSHUB_TOKEN"
+          dvc remote modify origin --local secret_access_key "$DAGSHUB_TOKEN"
+
+      - name: Make the challenger the champion
+        run: |
+          python -m run.promote --weights _retrain/runs/train/retrain/weights/best.pt \
+            --decision _retrain/artifacts/decision.json
+          mkdir -p artifacts/metrics
+          cp _retrain/artifacts/metrics/*.json artifacts/metrics/
+          cp _retrain/artifacts/metadata/data_version.txt _retrain/artifacts/metadata/last_retrain.txt artifacts/metadata/
+          cp _retrain/dvc.lock dvc.lock
+          dvc add artifacts/models/champion.pt
+          dvc push artifacts/models/champion.pt.dvc
+
+      - name: Open a pull request with the new champion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(cat artifacts/metadata/model_version.txt)
+          branch="retrain/${{ github.run_id }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add artifacts/models artifacts/metadata artifacts/metrics dvc.lock
+          git commit -m "chore(retrain): promote model $version from run ${{ github.run_id }}" \
+            -m "Approved in the model-approval environment. Metrics: artifacts/metrics/evaluation_metrics.json."
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" --title "chore(retrain): promote model $version" \
+            --body "New champion $version from run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Merge to make it the model every later run starts from."

@@ -1,68 +1,100 @@
-# Smart City UAV for Pothole Detection
+# Smart City UAV for Pothole Detection: Training Pipeline
 
 COS40007 Artificial Intelligence Engineering, Group 1 (Le Mai Chi, Hoang Huu Hoan, Tran Minh Hai).
+
+This branch holds the model side of the project: the YOLO dataset build, training, evaluation, threshold
+tuning, and the automated retraining and monitoring pipeline. The API, frontend, UAV simulator and edge code
+live on their own branches.
+
+The model detects four road-damage classes: D00 longitudinal crack, D10 transverse crack, D20 alligator crack,
+and D40 pothole.
 
 ## Repository layout
 
 ```
-model.py                      TensorFlow/Keras linear regression: data, training, evaluation, plots, saved model
-requirements.txt              Python dependencies: tensorflow, numpy, matplotlib (no versions pinned)
-.github/workflows/train.yml   CI workflow that installs the dependencies and runs model.py
+backend/
+  config.py        every changeable value: paths, dataset v1 split, training, thresholds, monitoring
+  ml/              logic: dataset v1 build, grouping and near-duplicate checks, training, evaluation,
+                   thresholds, drift monitoring, promotion
+  run/             entry points that only wire ml/ functions together (python -m run.<name>)
+  tests/           unit tests (run in CI without torch or ultralytics)
+docs/
+  architecture.md  stack review and decision records (ADR-001 to ADR-007)
+  data/            dataset v1 sources, grouping rules and split counts
+  training/        training records for the prototype and YOLO26n v1
+.github/workflows/
+  ci.yml           ruff and pytest on every pull request
+  retrain.yml      retraining and monitoring on new data, weekly, or on demand
+  train.yml        Studio 7 demo pipeline (model.py)
+model.py, requirements.txt   Studio 7 TensorFlow demo, kept for Group Task 2
 ```
 
-## What `model.py` does
+## Current model
 
-1. Builds a synthetic dataset of 50 points on the line `y = x + 10`, with `x` from -100 to 96 in steps of 4.
-2. Splits the points in order: the first 40 for training, the last 10 (`x` from 60 to 96) for testing.
-   The split is not shuffled, so the test set checks how well the model extrapolates past the training range.
-3. Builds a model with one `Dense(1)` layer, MAE loss and the SGD optimizer. The random seed is 42.
-4. Trains for 100 epochs. Keras keeps the last 20% of the training points (8 points) for validation.
-5. Predicts on the test set and computes MAE and MSE with NumPy.
-6. Prints the learned slope and intercept next to the expected `y = x + 10`.
+YOLO26n v1, trained from COCO weights on dataset v1 (`docs/training/yolo26n-v1.md`):
 
-## Outputs
+| Set | Images | mAP50 | mAP50-95 |
+|---|---|---|---|
+| Validation | 3,982 | 0.603 | 0.303 |
+| Test (frozen) | 4,039 | 0.607 | 0.309 |
 
-`model.py` writes these files to the current working directory:
+Dataset v1 is a grouped 70/15/15 split. Copies, near-duplicates and tiles of one UAV frame always stay on the
+same side, and the test set is locked by sha256 (`backend/data/interim_v1/test_lock.json`).
 
-| File | Contents |
-|---|---|
-| `model_results.png` | training data, test data and test predictions on one scatter plot |
-| `training_history.png` | training and validation loss per epoch, plus a second plot from epoch 10 onwards |
-| `metrics.txt` | test MAE and MSE |
-| `linear_regression_model.h5` | the trained model in Keras HDF5 format |
+## Setup
 
-The repository has no `.gitignore`, so after a local run git lists these files as untracked. Do not commit them.
-
-## Run locally
-
-You need Python 3.11, the same version CI uses.
+Python 3.11. Training needs an NVIDIA GPU.
 
 ```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python model.py
+cd backend
+pip install -e ".[dev,ml,dvc]"
+cp .env.example .env            # set DEVICE if needed
 ```
 
-`model.py` calls `plt.show()` twice. On a machine with a display, each plot opens in a window and the
-script waits until you close it.
+The dataset and weights are versioned with DVC, not git. Get them with `dvc pull` (see
+`docs/mlops/retraining.md` for the remote setup).
 
-## CI
+## Common commands
 
-`.github/workflows/train.yml` ("Train ML Model") runs on every push to `main`, on every pull request to
-`main`, and on demand from the Actions tab (`workflow_dispatch`). On an `ubuntu-latest` runner it:
+Run from `backend/`:
 
-1. checks out the code and sets up Python 3.11
-2. restores the pip cache, keyed on the hash of `requirements.txt`
-3. runs `pip install -r requirements.txt`
-4. runs `python model.py`
-5. uploads `model_results.png` and `metrics.txt` as the `model-results` artifact
+```bash
+python -m run.build_dataset_v1 build                     # rebuild the dataset v1 split lists
+python -m run.train --model yolo26n.pt --data data/interim_v1/data.yaml --name yolo26n-v1
+python -m run.tune_thresholds --weights runs/train/yolo26n-v1/weights/best.pt
+python -m run.evaluate_v1 --weights runs/train/yolo26n-v1/weights/best.pt   # verifies the test lock first
+ruff check . && pytest
+```
 
-The runner has no display, so `plt.show()` does nothing there and the plots are only saved to file.
-CI also creates `training_history.png` and `linear_regression_model.h5`, but it does not upload them.
-To keep them, add them to the `path` list of the "Upload results" step.
+Rules for this pipeline:
+
+- Choose checkpoints and thresholds on validation only. The test set is scored once per model, after the
+  test lock is verified.
+- Start training from COCO-pretrained weights or from the current champion, never from prototype runs.
+- Never commit datasets, weights or run output.
+
+## Retraining and monitoring
+
+`.github/workflows/retrain.yml` retrains the model when a new labelled batch is pushed
+(`backend/data/new/batch_NNN`, versioned with DVC), every week, or on demand:
+
+1. **check** (hosted): finds batches the champion was not trained on, writes a drift and data-quality report,
+   and decides whether to retrain.
+2. **retrain** on a self-hosted `gpu` runner (`dvc repro`: ingest with leakage checks, warm-start training,
+   champion vs challenger on validation, test scored for the record), or a short hosted CPU demo.
+3. **promote**: after a reviewer approves the `model-approval` environment, the challenger becomes the
+   champion and the change arrives as a pull request.
+
+- Runbook, setup and runner hosting on any PC: [docs/mlops/retraining.md](docs/mlops/retraining.md)
+- Demo recording guide: [docs/mlops/video-recording.md](docs/mlops/video-recording.md)
+
+## Studio 7 demo pipeline
+
+`model.py` is the Studio 7 TensorFlow linear-regression example. `train.yml` runs it on every push and pull
+request to `main` and on demand, then uploads `model_results.png` and `metrics.txt` as the `model-results`
+artifact.
 
 ## Workflow
 
-Make one branch per Jira issue, named after its key (for example `SCRUM-38-train-pipeline`), and merge
-it into `main` through a pull request.
+Make one branch per change, use Conventional Commit messages (`feat(scope): ...`, `fix:`, `ci:`, `docs:`),
+and merge into `main` through a pull request with passing checks.

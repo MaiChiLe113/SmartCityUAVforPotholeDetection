@@ -1,1 +1,56 @@
+# Env files
+.env
+.env.local
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
 .venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Data, runs and weights: versioned with DVC (dvc pull), never with git
+backend/data/raw/
+backend/data/prototype/grouped/
+backend/data/prototype/data.yaml
+backend/data/prototype/extracted.ok
+backend/data/processed/highrpd/
+backend/data/processed/prepare_report.json
+backend/data/interim_v1/cache/
+backend/data/handoff/
+backend/data/media/
+backend/data/*.db
+backend/data/retrain/
+backend/data/retrain_cpu/
+backend/runs/
+
+# Per-run monitoring output and the last decision (uploaded as workflow artifacts instead)
+backend/monitoring/reports/
+backend/monitoring/logs/
+backend/monitoring/alerts/
+backend/artifacts/decision.json
+backend/_retrain/
+backend/weights/
+mlruns/
+*.pt
+*.onnx
+*.engine
+*_ncnn_model/
+
+# DVC local config (holds the DagsHub token) and temp files
+.dvc/config.local
+.dvc/tmp/
+.dvc/cache/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Studio 7 pipeline outputs (model.py)
+/model_results.png
+/training_history.png
+/metrics.txt
+/linear_regression_model.h5

@@ -1,0 +1,49 @@
+[project]
+name = "pothole-uav-training"
+version = "0.2.0"
+description = "Smart City UAV for Pothole Detection: YOLO training, retraining and monitoring pipeline"
+requires-python = ">=3.11"
+# Core: enough for the data, monitoring and evaluation logic and the tests (CI installs .[dev]).
+dependencies = [
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "numpy>=1.26",
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+# Training stack. Ultralytics is pinned: YOLO26 needs 8.4+, and v1 was trained on 8.4.184.
+ml = [
+    "torch>=2.3",
+    "ultralytics==8.4.184",
+    "opencv-python>=4.10",
+    "pillow>=10.0",
+]
+# Data versioning against the DagsHub remote.
+dvc = [
+    "dvc[s3]>=3.50,<4",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["config"]
+
+[tool.setuptools.packages.find]
+include = ["ml*", "run*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

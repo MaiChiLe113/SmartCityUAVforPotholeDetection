@@ -1,0 +1,10 @@
+# Retraining knobs tracked by DVC (dvc.yaml stages depend on them). config.RETRAIN reads this file.
+retrain:
+  epochs: 20        # warm-start epochs from the champion on the GPU runner (v1 flattened after ~80 from COCO)
+  batch: 32         # lower to 16 or 8 on GPUs with less than 8 GB
+  val_share: 0.15   # share of new-image groups that go to validation
+  seed: 42
+  cpu_epochs: 3     # hosted CPU demo only; its model is never promoted
+  cpu_imgsz: 320
+  cpu_replay: 600
+  cpu_val: 400
