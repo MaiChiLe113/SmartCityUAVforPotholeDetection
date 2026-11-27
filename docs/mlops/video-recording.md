@@ -7,8 +7,9 @@ Target length: 8–10 minutes.
 How the demo works in one paragraph: new labelled road images arrive as a **batch** (a folder of images and
 YOLO labels). The batch is stored on DagsHub with DVC, and only a small pointer file (`batch_00N.dvc`) goes into
 git. Merging that pointer file into `main` starts the **Retrain on New Data** workflow. It checks the data
-for problems and drift, retrains the model on a GPU PC, compares it with the current model, and waits for a
-person to approve before the new model replaces the old one.
+for problems and drift, retrains the model on Hai's GPU PC (always on, see section 4), and compares the new
+model with the current one. A new model would only replace the current one after a person approves it.
+The assignment doesn't require a promotion, and the usual result is "keep the current model".
 
 ---
 
@@ -17,16 +18,16 @@ person to approve before the new model replaces the old one.
 | What | Who gives it | Why |
 |---|---|---|
 | GitHub collaborator with **Write** access to `MaiChiLe113/SmartCityUAVforPotholeDetection` | Chi (repo owner) | Push branches, open and merge PRs, run workflows |
-| Listed as a **required reviewer** of the `model-approval` environment | Chi (Settings → Environments → `model-approval`) | Click **Approve** on screen |
+| Optional: listed as a **required reviewer** of `model-approval` | Chi (Settings → Environments → `model-approval`) | Only needed if a run ever reaches the approval step |
 | A **DagsHub token** with write access to `0ceanya/pothole-uav-data` | Hai (repo `0ceanya/pothole-uav-data` → Settings → Collaborators, then your own token from DagsHub → User settings → Tokens) | `dvc pull` and `dvc push` the demo batches |
-| Which PC hosts the **GPU runner** on the day | Team decision | GPU retraining runs there. If it's not your PC, the host just keeps the runner window (`start-runner.cmd`) open |
+| Confirmation that **Hai's PC** is on, with the runner **Idle** | Hai | GPU retraining runs there, not on your machine |
 
 Never paste the DagsHub token into a file in the repo, a commit, a chat or the video. It only goes into the
 `dvc remote modify --local` commands below, which write the git-ignored `.dvc/config.local`.
 
 ## 2. Install on the recording machine
 
-No GPU is needed on the recording machine unless it also hosts the runner (section 4).
+No GPU is needed on the recording machine: the GPU job runs on Hai's PC.
 
 1. **Git**: <https://git-scm.com/downloads> (on Windows, Git for Windows also gives you Git Bash).
 2. **Python 3.11**: Miniconda from <https://docs.conda.io/en/latest/miniconda.html>.
@@ -86,42 +87,43 @@ git restore --staged backend/data/new/batch_002.dvc
 
 The last line unstages the pointer file, so you can add it yourself on camera (scene 4).
 
-**Each batch starts retraining once.** After a batch's new model is promoted and that PR is merged, the batch
-is listed in `backend/artifacts/metadata/batches.json` and won't count as new again. If a run is
-**not** promoted, its batch stays "new" and is included in the next run. Use a fresh batch for each re-take.
+**Batches stay "new" until a model trained on them is promoted.** A batch only leaves the pending list when a
+promotion PR lists it in `backend/artifacts/metadata/batches.json`. Promotions are rare (see scene 7), so
+once `batch_001` is on `main`, every later push, manual run and weekly run retrains with it, plus any newer
+batches. That's expected. For the live scene, merge a batch that isn't on `main` yet, so the run summary shows
+it as new.
 
-## 4. The GPU runner
+## 4. The GPU runner (Hai's PC, always on)
 
-GPU retraining runs on whichever PC is registered as the self-hosted runner with the label `gpu`. Setting up a
-new host takes about an hour, mostly the 9 GB data download. Follow **"Hosting the GPU runner on any PC"** in
-[retraining.md](retraining.md):
+You don't set up a runner. GPU retraining runs on Hai's PC, registered as `hai-rtx3060` with the label `gpu`
+and kept on permanently ("Current setup" in [retraining.md](retraining.md)). The repository variable
+`RETRAIN_MODE` stays at `gpu`.
 
-1. Create the `pothole-retrain` conda environment.
-2. `dvc pull` the data.
-3. Run `python -m run.check_env` until it prints `READY`.
-4. Register the runner with a token from Chi, labelled `gpu`.
-5. Create the runner `.env` file with `RETRAIN_PY` and `DVC_CACHE_DIR`.
-6. Start it with `start-runner.cmd` on Windows (it puts Git Bash first on PATH), or `./run.sh` on Linux.
+Before recording, check with Hai:
 
-On the day:
+- The PC is on and logged in (a locked screen is fine) and the runner window is open.
+- Settings → Actions → Runners shows `hai-rtx3060` as **Idle**. Only admins can open that page; otherwise ask
+  Hai or Chi.
+- Optional quick test, about 20 minutes: Actions → Retrain on New Data → **Run workflow** → mode `gpu`,
+  **smoke** ✓. It runs the whole GPU pipeline with 1 epoch and ends green.
 
-- The host PC is on, `start-runner.cmd` is running, and Settings → Actions → Runners shows the runner **Idle**.
-- Chi sets the repository variable `RETRAIN_MODE` to `gpu` (Settings → Secrets and variables → Actions →
-  Variables). Set it back to `cpu` afterwards.
-- If no GPU PC is available, keep `RETRAIN_MODE=cpu`. Every scene still works, but retraining is the short CPU
-  demo and nothing is promoted. Say so in the video.
+If Hai's PC can't be on, ask Chi to set `RETRAIN_MODE=cpu`. Every scene still works with the short hosted CPU
+demo instead of the GPU job; say so in the video.
+
+Times on Hai's PC: a full retrain (20 epochs) takes about **90 minutes** (about 3 minutes of data pull, 72 of
+training, 11 of evaluation). The smoke test takes about 20 minutes.
 
 ## 5. The day before: pre-recorded runs
 
-Training takes about an hour, so record its result in advance and show it in the video.
+A full retrain takes about 90 minutes, so record its result in advance and show it in the video.
 
 1. **Full GPU run on `batch_001`.** Fetch `batch_001` as in section 3, then commit and merge it exactly as in
-   scene 4 (branch `data/batch-001`). Wait for the run: about 10 minutes of data pulls and checks, about
-   60 minutes of training, about 10 minutes of evaluation.
-   - If the decision is **promote**, the `promote` job waits. Approve it (scene 7) and merge the PR it opens.
-     Screenshot or record the approval if you like; you can approve live with `batch_002` too.
-   - If the decision is **keep the champion**, that is a valid result to show. Explain why from the FAIL
-     lines.
+   scene 4 (branch `data/batch-001`). The run takes about 90 minutes in total. The check job runs on GitHub's
+   servers, then the GPU job runs on Hai's PC.
+   - The expected decision is **keep the champion**: the challenger's FAIL lines show it scored below the
+     current model on validation. That's the gate working, and it's what scene 7 shows.
+   - If the decision is **promote**, the `promote` job waits for a reviewer. Approving is optional; you can
+     also leave it, and it times out after 30 days.
 2. **A scheduled run.** On a branch, change the cron line in `.github/workflows/retrain.yml` to
    `- cron: "*/15 * * * *"`, commit (`ci: run the retraining schedule every 15 minutes for the demo`), and
    merge. After one run with event `schedule` appears, revert it (`ci: restore the weekly retraining schedule`)
@@ -132,8 +134,8 @@ Training takes about an hour, so record its result in advance and show it in the
 ## 6. Recording setup
 
 - Browser zoom 125%, notifications off, signed in to GitHub and DagsHub.
-- Tabs: the repository, Actions, Settings → Actions → Runners (if you have access, or ask the host to share
-  their screen), the DagsHub repository page.
+- Tabs: the repository, Actions, the finished `batch_001` run, the DagsHub repository page, and Settings →
+  Actions → Runners if you're an admin (otherwise use Hai's screenshot of the runner page).
 - Terminal with a large font, in the repository root, with `conda activate pothole-demo` done.
 - `batch_002` already pulled (section 3) and **not** committed.
 
@@ -142,8 +144,8 @@ Training takes about an hour, so record its result in advance and show it in the
 ### Scene 1 — Overview (0:40)
 **Show:** the repository on GitHub (`main`), then the flow diagram at the top of `docs/mlops/retraining.md`.
 **Say:** the model is YOLO26n, trained on about 29,000 road images. Retraining it needs a GPU, new data is
-images with labels, and the test set is frozen. That's why the pipeline has a data check, a GPU job, and a
-human approval step.
+images with labels, and the test set is frozen. That's why the pipeline has a data check, a GPU job on a
+team PC, and a gate before any new model replaces the current one.
 
 ### Scene 2 — Commit history (0:20)
 **Show:** `git log --oneline --graph -25`
@@ -190,21 +192,23 @@ the Czech photos look different from the training mix (different camera, size an
 what the monitor is for.
 
 ### Scene 6 — GPU retraining (1:15)
-**Show:** the runners page with the runner **Active** (or the host's runner window showing
-"Running job: Retrain on the GPU runner"). If you're on the host, `nvidia-smi`. In the job log: "Check this
-machine" ending with `READY`, then "Run the pipeline" starting `dvc repro`. Then switch to the finished
+**Show:** the live run's `Retrain on the GPU runner` job. Its log header names the runner, `hai-rtx3060`. Show
+"Check this machine" ending with `READY`, then "Run the pipeline" starting `dvc repro`. If Hai shares a
+screenshot of the runner window ("Running job: Retrain on the GPU runner") or `nvidia-smi`, show it here. Then switch to the finished
 `batch_001` run from the day before: its Summary shows champion vs challenger on validation and test, and the
 decision with PASS/FAIL lines.
 **Say:** training starts from the current champion. The frozen test set is verified before and after it is
 scored, and the promote decision uses validation only.
 
-### Scene 7 — Human approval (0:45)
-**Show:** on a run waiting at `Promote the new model`, click **Review deployments** → tick `model-approval`
-→ **Approve and deploy**. Then the job log, and the new pull request `chore(retrain): promote model v2` with
-`champion.pt.dvc` and the metadata files.
-**Say:** a new model only replaces the champion after a person approves it, and the change is a reviewable
-pull request. (If the result was "keep the champion", show `decision.json` instead and say the old model
-stays.)
+### Scene 7 — The promotion gate (0:45)
+**Show:** in the `batch_001` run, the Summary's decision ("keep the champion") and its PASS/FAIL lines. Then
+download `retrain-<id>` and open `artifacts/decision.json`. Point out that `Promote the new model (needs
+approval)` was skipped. Briefly show the `promote` job in `.github/workflows/retrain.yml`: `environment:
+model-approval`, then `run.promote` and `gh pr create`.
+**Say:** the new model scored below the current one on validation, so it was not promoted and the current
+model stays in use. If a retrain ever passes every check, the run stops and waits for a person to approve,
+and the new model arrives as a pull request. (If your run did reach the approval step, you can show
+**Review deployments** → **Approve and deploy** instead.)
 
 ### Scene 8 — Scheduled run (0:30)
 **Show:** the `schedule:` block in `.github/workflows/retrain.yml`, then the run with event `schedule` in the
@@ -231,9 +235,10 @@ register the runner.
 
 ## 8. After recording
 
-- Merge or close any open `chore(retrain): promote …` pull request (merge only if it was approved on purpose).
-- Make sure the temporary 15-minute schedule is reverted.
-- Ask Chi to set `RETRAIN_MODE` back to `cpu`, and the host to close the runner window.
+- Close any `chore(retrain): promote …` pull request unless the team means to switch models.
+- Make sure the temporary 15-minute schedule is reverted. With `batch_001` on `main`, every scheduled run
+  retrains (about 90 minutes on Hai's PC), so a 15-minute schedule would keep the PC busy non-stop.
+- Leave `RETRAIN_MODE=gpu` and Hai's runner as they are: the PC stays on as the team's runner.
 - Delete your local `data/batch-00N` branches if you like; they're merged.
 
 ## 9. Making the data visible on the DagsHub website
@@ -256,8 +261,8 @@ After that, DagsHub shows `backend/data/prototype/images` and the other tracked 
 |---|---|
 | `dvc pull` asks for credentials or returns 401/403 | Redo section 2 step 4 with a valid token, from the repository root |
 | No run appears after merging the batch PR | The PR must change `backend/data/new/*.dvc`; check that the file was committed |
-| `Retrain on the GPU runner` stays "Queued" | The runner is offline. Start `start-runner.cmd` on the host, or set `RETRAIN_MODE=cpu` and run again |
-| `Check data` says 0 new images | That batch was already trained on. Use the next batch |
-| `promote` didn't run | The challenger didn't pass the validation checks. Show `decision.json` (scene 7 alternative) |
-| No "Review deployments" button | You're not a required reviewer of `model-approval`. Ask Chi |
+| `Retrain on the GPU runner` stays "Queued" | Hai's PC or runner is off. Ask Hai to start `C:\actions-runner\start-runner.cmd`, or ask Chi to set `RETRAIN_MODE=cpu` and run again |
+| `Check data` says 0 new images | That batch was promoted already. Use the next batch |
+| `promote` didn't run | Expected: the challenger didn't pass the validation checks. Show `decision.json` (scene 7) |
+| No "Review deployments" button | Only appears if a run passes every check, and you must be a required reviewer of `model-approval` |
 | The promotion PR shows no checks | PRs opened by the workflow don't start other workflows. Close and reopen the PR |

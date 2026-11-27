@@ -85,6 +85,9 @@ Rules for this pipeline:
 3. **promote**: after a reviewer approves the `model-approval` environment, the challenger becomes the
    champion and the change arrives as a pull request.
 
+The GPU job runs on Hai's PC (`hai-rtx3060`), kept on as the team's always-on runner. A full retrain takes
+about 90 minutes there; a 1-epoch smoke test (manual run, `smoke` ✓) about 20.
+
 - Runbook, setup and runner hosting on any PC: [docs/mlops/retraining.md](docs/mlops/retraining.md)
 - Demo recording guide: [docs/mlops/video-recording.md](docs/mlops/video-recording.md)
 
